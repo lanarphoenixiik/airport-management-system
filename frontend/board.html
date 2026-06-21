@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Информационное табло — Шереметьево</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Courier New', monospace;
+      background: #0a0e17;
+      color: #00e5ff;
+      padding: 20px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 30px;
+      border-bottom: 2px solid #00e5ff;
+      margin-bottom: 20px;
+    }
+
+    .header h1 {
+      font-size: 28px;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      font-weight: 300;
+      color: #fff;
+    }
+
+    .header .time {
+      font-size: 24px;
+      color: #fff;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 18px;
+    }
+
+    thead th {
+      text-align: left;
+      padding: 12px 15px;
+      border-bottom: 2px solid #00e5ff;
+      color: #fff;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-weight: 400;
+    }
+
+    tbody td {
+      padding: 10px 15px;
+      border-bottom: 1px solid rgba(0, 229, 255, 0.2);
+    }
+
+    .status {
+      font-weight: bold;
+      padding: 4px 12px;
+      border-radius: 4px;
+      display: inline-block;
+    }
+
+    /* Цвета статусов в соответствии с отчётом */
+    .status.scheduled {
+      color: #00cc66;
+    }
+
+    /* зелёный — по расписанию */
+    .status.check_in {
+      color: #ffcc00;
+    }
+
+    /* жёлтый — регистрация */
+    .status.boarding {
+      color: #ffaa00;
+    }
+
+    /* жёлтый/оранжевый — посадка */
+    .status.departed {
+      color: #00cc66;
+    }
+
+    /* зелёный — вылетел */
+    .status.arrived {
+      color: #00cc66;
+    }
+
+    /* зелёный — прибыл */
+    .status.delayed {
+      color: #ff4444;
+    }
+
+    /* красный — задержан */
+    .status.cancelled {
+      color: #ff4444;
+    }
+
+    /* красный — отменён */
+    .footer {
+      margin-top: auto;
+      padding-top: 20px;
+      border-top: 1px solid rgba(0, 229, 255, 0.2);
+      text-align: center;
+      font-size: 14px;
+      color: #555;
+    }
+
+    .refresh {
+      color: #00e5ff;
+      font-size: 14px;
+      margin-top: 10px;
+      text-align: right;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="header">
+    <h1>🛫 АЭРОПОРТ ШЕРЕМЕТЬЕВО</h1>
+    <div class="time" id="currentTime">--:--</div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Время вылета</th>
+        <th>Рейс</th>
+        <th>Направление</th>
+        <th>Статус</th>
+        <th>Выход</th>
+        <th>Стойка</th>
+      </tr>
+    </thead>
+    <tbody id="flightsTable">
+      <tr>
+        <td colspan="6" style="text-align:center; color:#555;">Загрузка данных...</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="refresh" id="updateInfo">Обновлено: --</div>
+  <div class="footer">© 2026 Информационная система управления аэровокзалом</div>
+
+  <script>
+    // Функция обновления времени
+    function updateClock() {
+      const now = new Date();
+      document.getElementById('currentTime').textContent = now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // Функция загрузки рейсов
+    async function loadFlights() {
+      try {
+        const response = await fetch('/api/flights/');
+        const data = await response.json();
+        const table = document.getElementById('flightsTable');
+
+        if (data.length === 0) {
+          table.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#555;">Нет рейсов на сегодня</td></tr>`;
+          return;
+        }
+
+        // Сортировка по времени вылета
+        data.sort((a, b) => new Date(a.scheduled_departure) - new Date(b.scheduled_departure));
+
+        let html = '';
+        data.forEach(flight => {
+          const departureTime = new Date(flight.scheduled_departure).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+          const statusMap = {
+            'scheduled': 'По расписанию',
+            'check_in': 'Регистрация',
+            'boarding': 'Посадка',
+            'departed': 'Вылетел',
+            'arrived': 'Прибыл',
+            'delayed': 'Задержан',
+            'cancelled': 'Отменён'
+          };
+          const statusText = statusMap[flight.status] || flight.status;
+          const statusClass = flight.status;
+
+          html += `<tr>
+                        <td>${departureTime}</td>
+                        <td><strong>${flight.flight_number}</strong></td>
+                        <td>${flight.departure_airport_code} → ${flight.arrival_airport_code}</td>
+                        <td><span class="status ${statusClass}">${statusText}</span></td>
+                        <td>${flight.gate_name || '—'}</td>
+                        <td>${flight.check_in_counter_name || '—'}</td>
+                    </tr>`;
+        });
+
+        table.innerHTML = html;
+        document.getElementById('updateInfo').textContent = `Обновлено: ${new Date().toLocaleTimeString('ru-RU')}`;
+      } catch (error) {
+        console.error('Ошибка загрузки рейсов:', error);
+        document.getElementById('flightsTable').innerHTML = `<tr><td colspan="6" style="text-align:center; color:#ff4444;">Ошибка загрузки данных</td></tr>`;
+      }
+    }
+
+    // Загружаем рейсы при открытии страницы
+    loadFlights();
+
+    // Обновляем каждые 30 секунд (можно заменить на WebSocket позже)
+    setInterval(loadFlights, 30000);
+  </script>
+</body>
+
+</html>
